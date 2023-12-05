@@ -1,0 +1,237 @@
+/*
+Wails Extension
+============================
+This extension adds support for Wails functions to htmx.
+Based off the htmx websocket and SSE extensions.
+*/
+
+(function(){
+
+    /** @type {import("../htmx").HtmxInternalApi} */
+    let api;
+
+    htmx.defineExtension("wails", {
+
+        /**
+         * Init saves the provided reference to the internal HTMX API.
+         * 
+         * @param {import("../htmx").HtmxInternalApi} api 
+         * @returns void
+         */
+        init: function(apiRef) {
+            // store a reference to the internal API.
+            api = apiRef;
+        },
+
+        /**
+         * onEvent handles all events passed to this extension.
+         * 
+         * @param {string} name 
+         * @param {Event} evt 
+         * @returns void
+         */
+        onEvent: function(name, evt) {
+            switch (name) {
+
+                    // Try to remove remove an EventSource when elements are removed
+                case "htmx:beforeCleanupElement":
+                    const internalData = api.getInternalData(evt.target)
+                    return;
+
+                case "htmx:afterProcessNode":
+                    addWailsHandlers(evt.target);
+            }
+        }
+    });
+
+    /**
+     * addWailsHandlers adds the handlers for the Wails events from the backend
+     * and for emitting events to the backend
+     */
+    function addWailsHandlers(elt, retryCount) {
+
+        if (elt == null) {
+            return null;
+        }
+
+        const internalData = api.getInternalData(elt);
+
+        // Add event handlers for every `wails-on` attribute
+        queryAttributeOnThisOrChildren(elt, "wails-on").forEach(function(child) {
+
+            const wailsOnAttribute = api.getAttributeValue(child, "wails-on");
+            const wailsEventNames = wailsOnAttribute.split(",");
+
+            for (let i = 0 ; i < wailsEventNames.length ; i++) {
+                const wailsEventName = wailsEventNames[i].trim();
+                const listener = function(event) {
+                    // swap the response into the DOM and trigger a notification
+                    swap(child, event);
+                    api.triggerEvent(elt, "htmx:wailsMessage", event);
+                };
+
+                window.runtime.EventsOn(wailsEventName, listener);
+
+                // Register the new listener
+                api.getInternalData(elt).wailsEventListener = listener;
+            }
+        });
+
+        queryAttributeOnThisOrChildren(elt, "wails-emit").forEach(function(child) {
+
+            const wailsEvent = api.getAttributeValue(child, "wails-emit");
+
+            const triggerSpecs = api.getTriggerSpecs(elt)
+            const nodeData = api.getInternalData(elt);
+
+            triggerSpecs.forEach(function (triggerSpec) {
+                // For "naked" triggers, don't do anything at all
+                api.addTriggerHandler(child, triggerSpec, nodeData, function () {
+                    const results = api.getInputValues(child, 'POST');
+                    const errors = results.errors;
+                    const rawParameters = results.values;
+                    const expressionVars = api.getExpressionVars(child);
+                    const allParameters = api.mergeObjects(rawParameters, expressionVars);
+                    const filteredParameters = api.filterValues(allParameters, child);
+                    window.runtime.EventsEmit(wailsEvent, filteredParameters)
+                })
+            })
+        });
+
+        queryAttributeOnThisOrChildren(elt, "wails-call").forEach(function(child) {
+
+            const wailsEvent = api.getAttributeValue(child, "wails-call");
+
+            let struct = "App"
+            let method = ""
+             
+            if (wailsEvent.indexOf(":") >= 0) {
+                [struct, method] = wailsEvent.split(":", 2)
+            } else {
+                method = wailsEvent
+            }
+
+            import(`../wailsjs/go/main/${struct}`).then((module) => {
+                const triggerSpecs = api.getTriggerSpecs(child)
+                const nodeData = api.getInternalData(child);
+
+                const myMethod = module[method]
+
+                triggerSpecs.forEach(function (triggerSpec) {
+                    api.addTriggerHandler(child, triggerSpec, nodeData, function () {
+                        const results = api.getInputValues(child, 'POST');
+                        const errors = results.errors;
+                        const rawParameters = results.values;
+                        const expressionVars = api.getExpressionVars(child);
+                        const allParameters = api.mergeObjects(rawParameters, expressionVars);
+                        const filteredParameters = api.filterValues(allParameters, child);
+                        myMethod().then((res) => {
+                            api.selectAndSwap('innerHTML', child, child, res, {}, '')
+                        })
+                    })
+                })
+            })
+        });
+
+        // Add message handlers for every `hx-trigger="wails:*"` attribute
+        queryAttributeOnThisOrChildren(elt, "hx-trigger").forEach(function(child) {
+
+            const wailsEventName = api.getAttributeValue(child, "hx-trigger");
+            if (wailsEventName == null) {
+                return;
+            }
+
+            // Only process hx-triggers for events with the "wails:" prefix
+            if (wailsEventName.slice(0, 5) !== "wails:") {
+                return;
+            }
+
+            const listener = function(event) {
+
+                // Trigger events to be handled by the rest of htmx
+                htmx.trigger(child, wailsEventName, event);
+                htmx.trigger(child, "htmx:wailsMessage", event);
+            }
+
+            // Register the new listener
+            api.getInternalData(elt).wailsEventListener = listener;
+        });
+    }
+
+    /**
+     * queryAttributeOnThisOrChildren returns all nodes that contain the requested attributeName, INCLUDING THE PROVIDED ROOT ELEMENT.
+     * 
+     * @param {HTMLElement} elt 
+     * @param {string} attributeName 
+     */
+    function queryAttributeOnThisOrChildren(elt, attributeName) {
+
+        const result = [];
+
+        // If the parent element also contains the requested attribute, then add it to the results too.
+        if (api.hasAttribute(elt, attributeName)) {
+            result.push(elt);
+        }
+
+        // Search all child nodes that match the requested attribute
+        elt.querySelectorAll("[" + attributeName + "], [data-" + attributeName + "]").forEach(function(node) {
+            result.push(node);
+        });
+
+        return result;
+    }
+
+    /**
+     * @param {HTMLElement} elt
+     * @param {string} content 
+     */
+    function swap(elt, content) {
+
+        api.withExtensions(elt, function(extension) {
+            content = extension.transformResponse(content, null, elt);
+        });
+
+        const swapSpec = api.getSwapSpecification(elt);
+        const target = api.getTarget(elt);
+        const settleInfo = api.makeSettleInfo(elt);
+
+        api.selectAndSwap(swapSpec.swapStyle, target, elt, content, settleInfo);
+
+        settleInfo.elts.forEach(function (elt) {
+            if (elt.classList) {
+                elt.classList.add(htmx.config.settlingClass);
+            }
+            api.triggerEvent(elt, 'htmx:beforeSettle');
+        });
+
+        // Handle settle tasks (with delay if requested)
+        if (swapSpec.settleDelay > 0) {
+            setTimeout(doSettle(settleInfo), swapSpec.settleDelay);
+        } else {
+            doSettle(settleInfo)();
+        }
+    }
+
+    /**
+     * doSettle mirrors much of the functionality in htmx that 
+     * settles elements after their content has been swapped.
+     * TODO: this should be published by htmx, and not duplicated here
+     * @param {import("../htmx").HtmxSettleInfo} settleInfo 
+     * @returns () => void
+     */
+    function doSettle(settleInfo) {
+
+        return function() {
+            settleInfo.tasks.forEach(function (task) {
+                task.call();
+            });
+
+            settleInfo.elts.forEach(function (elt) {
+                if (elt.classList) {
+                    elt.classList.remove(htmx.config.settlingClass);
+                }
+                api.triggerEvent(elt, 'htmx:afterSettle');
+            });
+        }
+    }
+
