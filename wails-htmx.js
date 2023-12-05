@@ -35,8 +35,10 @@ Based off the htmx websocket and SSE extensions.
 
                     // Try to remove remove an EventSource when elements are removed
                 case "htmx:beforeCleanupElement":
+                    {
                     const internalData = api.getInternalData(evt.target)
                     return;
+                    }
 
                 case "htmx:afterProcessNode":
                     addWailsHandlers(evt.target);
@@ -57,7 +59,8 @@ Based off the htmx websocket and SSE extensions.
         const internalData = api.getInternalData(elt);
 
         // Add event handlers for every `wails-on` attribute
-        queryAttributeOnThisOrChildren(elt, "wails-on").forEach(function(child) {
+        for (const child of queryAttributeOnThisOrChildren(elt, "wails-on")) {
+        // queryAttributeOnThisOrChildren(elt, "wails-on").forEach(function(child) {
 
             const wailsOnAttribute = api.getAttributeValue(child, "wails-on");
             const wailsEventNames = wailsOnAttribute.split(",");
@@ -75,16 +78,16 @@ Based off the htmx websocket and SSE extensions.
                 // Register the new listener
                 api.getInternalData(elt).wailsEventListener = listener;
             }
-        });
+        }
 
-        queryAttributeOnThisOrChildren(elt, "wails-emit").forEach(function(child) {
+        for (const child of queryAttributeOnThisOrChildren(elt, "wails-emit")) {
 
             const wailsEvent = api.getAttributeValue(child, "wails-emit");
 
             const triggerSpecs = api.getTriggerSpecs(elt)
             const nodeData = api.getInternalData(elt);
 
-            triggerSpecs.forEach(function (triggerSpec) {
+            for (const triggerSpec of triggerSpecs) {
                 // For "naked" triggers, don't do anything at all
                 api.addTriggerHandler(child, triggerSpec, nodeData, function () {
                     const results = api.getInputValues(child, 'POST');
@@ -95,10 +98,10 @@ Based off the htmx websocket and SSE extensions.
                     const filteredParameters = api.filterValues(allParameters, child);
                     window.runtime.EventsEmit(wailsEvent, filteredParameters)
                 })
-            })
-        });
+            }
+        }
 
-        queryAttributeOnThisOrChildren(elt, "wails-call").forEach(function(child) {
+        for (const child of queryAttributeOnThisOrChildren(elt, "wails-call")) {
 
             const wailsEvent = api.getAttributeValue(child, "wails-call");
 
@@ -117,7 +120,7 @@ Based off the htmx websocket and SSE extensions.
 
                 const myMethod = module[method]
 
-                triggerSpecs.forEach(function (triggerSpec) {
+                for (const triggerSpec of triggerSpecs) {
                     api.addTriggerHandler(child, triggerSpec, nodeData, function () {
                         const results = api.getInputValues(child, 'POST');
                         const errors = results.errors;
@@ -126,15 +129,16 @@ Based off the htmx websocket and SSE extensions.
                         const allParameters = api.mergeObjects(rawParameters, expressionVars);
                         const filteredParameters = api.filterValues(allParameters, child);
                         myMethod().then((res) => {
-                            api.selectAndSwap('innerHTML', child, child, res, {}, '')
+                            swap(child, res)
+                            // api.selectAndSwap('innerHTML', child, child, res, {}, '')
                         })
                     })
-                })
+                }
             })
-        });
+        }
 
         // Add message handlers for every `hx-trigger="wails:*"` attribute
-        queryAttributeOnThisOrChildren(elt, "hx-trigger").forEach(function(child) {
+        for (const child of queryAttributeOnThisOrChildren(elt, "hx-trigger")) {
 
             const wailsEventName = api.getAttributeValue(child, "hx-trigger");
             if (wailsEventName == null) {
@@ -155,7 +159,7 @@ Based off the htmx websocket and SSE extensions.
 
             // Register the new listener
             api.getInternalData(elt).wailsEventListener = listener;
-        });
+        }
     }
 
     /**
@@ -174,9 +178,9 @@ Based off the htmx websocket and SSE extensions.
         }
 
         // Search all child nodes that match the requested attribute
-        elt.querySelectorAll("[" + attributeName + "], [data-" + attributeName + "]").forEach(function(node) {
+        for (const node of elt.querySelectorAll(`[${attributeName}], [data-${attributeName}]`)) {
             result.push(node);
-        });
+        }
 
         return result;
     }
@@ -187,22 +191,24 @@ Based off the htmx websocket and SSE extensions.
      */
     function swap(elt, content) {
 
+        let myContent
+
         api.withExtensions(elt, function(extension) {
-            content = extension.transformResponse(content, null, elt);
+             myContent = extension.transformResponse(content, null, elt);
         });
 
         const swapSpec = api.getSwapSpecification(elt);
         const target = api.getTarget(elt);
         const settleInfo = api.makeSettleInfo(elt);
 
-        api.selectAndSwap(swapSpec.swapStyle, target, elt, content, settleInfo);
+        api.selectAndSwap(swapSpec.swapStyle, target, elt, myContent, settleInfo);
 
-        settleInfo.elts.forEach(function (elt) {
+        for (const elt of settleInfo.elts) {
             if (elt.classList) {
                 elt.classList.add(htmx.config.settlingClass);
             }
             api.triggerEvent(elt, 'htmx:beforeSettle');
-        });
+        }
 
         // Handle settle tasks (with delay if requested)
         if (swapSpec.settleDelay > 0) {
@@ -222,16 +228,17 @@ Based off the htmx websocket and SSE extensions.
     function doSettle(settleInfo) {
 
         return function() {
-            settleInfo.tasks.forEach(function (task) {
+            for (const task of settleInfo.tasks) {
                 task.call();
-            });
+            }
 
-            settleInfo.elts.forEach(function (elt) {
+            for (const elt of settleInfo.elts) {
                 if (elt.classList) {
                     elt.classList.remove(htmx.config.settlingClass);
                 }
                 api.triggerEvent(elt, 'htmx:afterSettle');
-            });
+            };
         }
     }
+})()
 
