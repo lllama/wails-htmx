@@ -11,7 +11,6 @@ Based off the htmx websocket and SSE extensions.
     let api;
 
     htmx.defineExtension("wails", {
-
         /**
          * Init saves the provided reference to the internal HTMX API.
          * 
@@ -32,14 +31,6 @@ Based off the htmx websocket and SSE extensions.
          */
         onEvent: function(name, evt) {
             switch (name) {
-
-                    // Try to remove remove an EventSource when elements are removed
-                case "htmx:beforeCleanupElement":
-                    {
-                    const internalData = api.getInternalData(evt.target)
-                    return;
-                    }
-
                 case "htmx:afterProcessNode":
                     addWailsHandlers(evt.target);
             }
@@ -60,7 +51,6 @@ Based off the htmx websocket and SSE extensions.
 
         // Add event handlers for every `wails-on` attribute
         for (const child of queryAttributeOnThisOrChildren(elt, "wails-on")) {
-        // queryAttributeOnThisOrChildren(elt, "wails-on").forEach(function(child) {
 
             const wailsOnAttribute = api.getAttributeValue(child, "wails-on");
             const wailsEventNames = wailsOnAttribute.split(",");
@@ -107,34 +97,32 @@ Based off the htmx websocket and SSE extensions.
 
             let struct = "App"
             let method = ""
-             
+
+
             if (wailsEvent.indexOf(":") >= 0) {
                 [struct, method] = wailsEvent.split(":", 2)
             } else {
                 method = wailsEvent
             }
 
-            import(`../wailsjs/go/main/${struct}`).then((module) => {
-                const triggerSpecs = api.getTriggerSpecs(child)
-                const nodeData = api.getInternalData(child);
+            const triggerSpecs = api.getTriggerSpecs(child)
+            const nodeData = api.getInternalData(child)
 
-                const myMethod = module[method]
+            const myMethod = function(arg1) {return window.go.main[struct][method](arg1)}
 
-                for (const triggerSpec of triggerSpecs) {
-                    api.addTriggerHandler(child, triggerSpec, nodeData, function () {
-                        const results = api.getInputValues(child, 'POST');
-                        const errors = results.errors;
-                        const rawParameters = results.values;
-                        const expressionVars = api.getExpressionVars(child);
-                        const allParameters = api.mergeObjects(rawParameters, expressionVars);
-                        const filteredParameters = api.filterValues(allParameters, child);
-                        myMethod().then((res) => {
-                            swap(child, res)
-                            // api.selectAndSwap('innerHTML', child, child, res, {}, '')
-                        })
+            for (const triggerSpec of triggerSpecs) {
+                api.addTriggerHandler(child, triggerSpec, nodeData, function () {
+                    const results = api.getInputValues(child, 'POST')
+                    const errors = results.errors
+                    const rawParameters = results.values
+                    const expressionVars = api.getExpressionVars(child)
+                    const allParameters = api.mergeObjects(rawParameters, expressionVars)
+                    const filteredParameters = api.filterValues(allParameters, child)
+                    myMethod().then((res) => {
+                        swap(child, res)
                     })
-                }
-            })
+                })
+            }
         }
 
         // Add message handlers for every `hx-trigger="wails:*"` attribute
@@ -194,7 +182,7 @@ Based off the htmx websocket and SSE extensions.
         let myContent
 
         api.withExtensions(elt, function(extension) {
-             myContent = extension.transformResponse(content, null, elt);
+            myContent = extension.transformResponse(content, null, elt);
         });
 
         const swapSpec = api.getSwapSpecification(elt);
