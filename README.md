@@ -41,12 +41,12 @@ And then change the example `Greet` method to be:
 
 ```go
 type GreetValues struct {
-	testdata  string
-	testdata2 string
+	Testdata  string
+	Testdata2 string
 }
 
 // Greet returns a greeting for the given name
 func (a *App) Greet(names GreetValues) string {
-	return fmt.Sprintf("Hello %s, It's show time!", names.testdata)
+	return fmt.Sprintf("Hello %s, It's show time!", names.Testdata)
 }
 ```
