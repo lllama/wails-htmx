@@ -118,7 +118,7 @@ Based off the htmx websocket and SSE extensions.
                     const expressionVars = api.getExpressionVars(child)
                     const allParameters = api.mergeObjects(rawParameters, expressionVars)
                     const filteredParameters = api.filterValues(allParameters, child)
-                    myMethod().then((res) => {
+                    myMethod(filteredParameters).then((res) => {
                         swap(child, res)
                     })
                 })
