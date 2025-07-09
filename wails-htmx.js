@@ -189,7 +189,12 @@ Based off the htmx websocket and SSE extensions.
         const target = api.getTarget(elt);
         const settleInfo = api.makeSettleInfo(elt);
 
-        api.selectAndSwap(swapSpec.swapStyle, target, elt, myContent, settleInfo);
+        if (typeof(api.selectAndSwap) === "function") {
+            // htmx version 1.x
+            api.selectAndSwap(swapSpec.swapStyle, target, elt, myContent, settleInfo);
+        } else {
+            api.swap(target, myContent, swapSpec);
+        }
 
         for (const elt of settleInfo.elts) {
             if (elt.classList) {
